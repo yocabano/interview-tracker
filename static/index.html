@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interview Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <style>
+    body { background: #0d1117; }
+    .card { border: 1px solid #30363d; background: #161b22; }
+    .status-badge { font-size: .75rem; padding: .25em .55em; }
+    .skill-chip {
+      display: inline-block;
+      background: #1f6feb33;
+      border: 1px solid #1f6feb66;
+      color: #79c0ff;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: .75rem;
+      margin: 2px;
+    }
+    .table-hover tbody tr:hover { background: #21262d; }
+    #toast-container { position: fixed; bottom: 1rem; right: 1rem; z-index: 9999; }
+    .scraping-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(13,17,23,.85);
+      z-index: 10;
+      border-radius: .375rem;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: .75rem;
+    }
+    .scraping-overlay.active { display: flex; }
+    #add-modal .modal-body { position: relative; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark bg-dark border-bottom border-secondary px-3">
+  <span class="navbar-brand fw-bold"><i class="bi bi-briefcase-fill me-2 text-primary"></i>Interview Tracker</span>
+  <button class="btn btn-primary btn-sm" onclick="openAddModal()">
+    <i class="bi bi-plus-lg me-1"></i>Add Job
+  </button>
+</nav>
+
+<!-- Stats bar -->
+<div class="container-fluid py-3 px-3">
+  <div class="row g-2 mb-3" id="stats-row"></div>
+
+  <!-- Filters -->
+  <div class="d-flex gap-2 flex-wrap mb-3">
+    <select class="form-select form-select-sm w-auto" id="filter-status" onchange="loadApps()">
+      <option value="">All statuses</option>
+      <option value="interested">Interested</option>
+      <option value="applied">Applied</option>
+      <option value="phone_screen">Phone screen</option>
+      <option value="technical">Technical</option>
+      <option value="onsite">Onsite</option>
+      <option value="offer">Offer</option>
+      <option value="rejected">Rejected</option>
+      <option value="withdrawn">Withdrawn</option>
+    </select>
+    <select class="form-select form-select-sm w-auto" id="filter-interview" onchange="loadApps()">
+      <option value="">All</option>
+      <option value="true">Interview received</option>
+      <option value="false">No interview yet</option>
+    </select>
+    <input class="form-control form-control-sm w-auto" id="filter-search" placeholder="Search company / role…" oninput="renderTable()" />
+  </div>
+
+  <!-- Table (desktop) -->
+  <div class="d-none d-md-block">
+    <div class="table-responsive rounded border border-secondary">
+      <table class="table table-dark table-hover table-sm mb-0 align-middle">
+        <thead class="text-secondary" style="font-size:.8rem">
+          <tr>
+            <th>Company</th><th>Position</th><th>Status</th>
+            <th>Interview</th><th>Visa</th><th>Remote</th>
+            <th>Applied</th><th>Follow-up</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Cards (mobile) -->
+  <div class="d-md-none" id="cards-container"></div>
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal fade" id="add-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content bg-dark border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="modal-title">Add Job Application</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Scraping overlay -->
+        <div class="scraping-overlay" id="scraping-overlay">
+          <div class="spinner-border text-primary"></div>
+          <span class="text-light">Scraping job page with AI…</span>
+        </div>
+
+        <!-- URL scrape -->
+        <div id="url-section" class="mb-3">
+          <label class="form-label text-secondary small">Job posting URL (auto-fill)</label>
+          <div class="input-group input-group-sm">
+            <input type="url" class="form-control bg-dark text-light border-secondary" id="f-url" placeholder="https://…" />
+            <button class="btn btn-outline-primary" onclick="doScrape()">
+              <i class="bi bi-magic me-1"></i>Scrape
+            </button>
+          </div>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-sm-6">
+            <label class="form-label text-secondary small">Company *</label>
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" id="f-company" required />
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label text-secondary small">Position *</label>
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" id="f-position" required />
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label text-secondary small">Location</label>
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" id="f-location" placeholder="City, State" />
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label text-secondary small">Remote type</label>
+            <select class="form-select form-select-sm bg-dark text-light border-secondary" id="f-remote">
+              <option value="unknown">Unknown</option>
+              <option value="remote">Remote</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="onsite">Onsite</option>
+            </select>
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label text-secondary small">Visa sponsorship</label>
+            <select class="form-select form-select-sm bg-dark text-light border-secondary" id="f-visa">
+              <option value="unknown">Unknown</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label text-secondary small">Salary range</label>
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" id="f-salary" placeholder="e.g. $120k–$150k" />
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label text-secondary small">Applied date</label>
+            <input type="date" class="form-control form-control-sm bg-dark text-light border-secondary" id="f-applied" />
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label text-secondary small">Status</label>
+            <select class="form-select form-select-sm bg-dark text-light border-secondary" id="f-status">
+              <option value="interested">Interested</option>
+              <option value="applied">Applied</option>
+              <option value="phone_screen">Phone screen</option>
+              <option value="technical">Technical</option>
+              <option value="onsite">Onsite</option>
+              <option value="offer">Offer</option>
+              <option value="rejected">Rejected</option>
+              <option value="withdrawn">Withdrawn</option>
+            </select>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label text-secondary small">Follow-up date</label>
+            <input type="date" class="form-control form-control-sm bg-dark text-light border-secondary" id="f-followup" />
+          </div>
+          <div class="col-sm-6 d-flex align-items-end">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="f-interview" />
+              <label class="form-check-label text-secondary small" for="f-interview">Interview received</label>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label text-secondary small">Required skills (comma-separated)</label>
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" id="f-skills" placeholder="Python, SQL, Spark, dbt…" />
+          </div>
+          <div class="col-12">
+            <label class="form-label text-secondary small">Job description summary</label>
+            <textarea class="form-control form-control-sm bg-dark text-light border-secondary" id="f-desc" rows="3"></textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label text-secondary small">Notes</label>
+            <textarea class="form-control form-control-sm bg-dark text-light border-secondary" id="f-notes" rows="2" placeholder="Recruiter name, referral, next steps…"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="saveApplication()">
+          <i class="bi bi-floppy me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail / view modal -->
+<div class="modal fade" id="detail-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content bg-dark border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="detail-title">Job Detail</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detail-body"></div>
+      <div class="modal-footer border-secondary">
+        <button class="btn btn-outline-danger btn-sm" id="detail-delete-btn">
+          <i class="bi bi-trash me-1"></i>Delete
+        </button>
+        <button class="btn btn-primary btn-sm" id="detail-edit-btn">
+          <i class="bi bi-pencil me-1"></i>Edit
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const STATUS_COLORS = {
+  interested: 'secondary', applied: 'primary', phone_screen: 'info',
+  technical: 'warning', onsite: 'warning', offer: 'success',
+  rejected: 'danger', withdrawn: 'dark'
+};
+const STATUS_LABELS = {
+  interested: 'Interested', applied: 'Applied', phone_screen: 'Phone Screen',
+  technical: 'Technical', onsite: 'Onsite', offer: 'Offer',
+  rejected: 'Rejected', withdrawn: 'Withdrawn'
+};
+const VISA_ICONS = { yes: '✅', no: '❌', unknown: '❓' };
+const REMOTE_ICONS = { remote: '🌐', hybrid: '🏠', onsite: '🏢', unknown: '–' };
+
+let allApps = [];
+let editingId = null;
+let addModalInst, detailModalInst;
+
+document.addEventListener('DOMContentLoaded', () => {
+  addModalInst = new bootstrap.Modal(document.getElementById('add-modal'));
+  detailModalInst = new bootstrap.Modal(document.getElementById('detail-modal'));
+  loadApps();
+});
+
+async function loadApps() {
+  const status = document.getElementById('filter-status').value;
+  const interview = document.getElementById('filter-interview').value;
+  let url = '/api/applications?';
+  if (status) url += `status=${status}&`;
+  if (interview !== '') url += `interview_received=${interview}`;
+  const res = await fetch(url);
+  allApps = await res.json();
+  renderStats();
+  renderTable();
+}
+
+function renderStats() {
+  const counts = {};
+  allApps.forEach(a => counts[a.status] = (counts[a.status] || 0) + 1);
+  const total = allApps.length;
+  const interviews = allApps.filter(a => a.interview_received).length;
+  const offers = counts['offer'] || 0;
+
+  document.getElementById('stats-row').innerHTML = `
+    <div class="col-6 col-md-3"><div class="card p-2 text-center">
+      <div class="fs-4 fw-bold text-primary">${total}</div>
+      <div class="small text-secondary">Total</div>
+    </div></div>
+    <div class="col-6 col-md-3"><div class="card p-2 text-center">
+      <div class="fs-4 fw-bold text-info">${interviews}</div>
+      <div class="small text-secondary">Interviews</div>
+    </div></div>
+    <div class="col-6 col-md-3"><div class="card p-2 text-center">
+      <div class="fs-4 fw-bold text-success">${offers}</div>
+      <div class="small text-secondary">Offers</div>
+    </div></div>
+    <div class="col-6 col-md-3"><div class="card p-2 text-center">
+      <div class="fs-4 fw-bold text-warning">${total ? Math.round(interviews/total*100) : 0}%</div>
+      <div class="small text-secondary">Interview rate</div>
+    </div></div>
+  `;
+}
+
+function filteredApps() {
+  const q = document.getElementById('filter-search').value.toLowerCase();
+  if (!q) return allApps;
+  return allApps.filter(a =>
+    a.company.toLowerCase().includes(q) || a.position.toLowerCase().includes(q)
+  );
+}
+
+function statusBadge(s) {
+  return `<span class="badge bg-${STATUS_COLORS[s] || 'secondary'} status-badge">${STATUS_LABELS[s] || s}</span>`;
+}
+
+function skillChips(skills) {
+  if (!skills) return '–';
+  return skills.split(',').map(s => `<span class="skill-chip">${s.trim()}</span>`).join('');
+}
+
+function renderTable() {
+  const apps = filteredApps();
+  // Desktop table
+  document.getElementById('table-body').innerHTML = apps.map(a => `
+    <tr style="cursor:pointer" onclick="showDetail(${a.id})">
+      <td class="fw-semibold">${a.company}</td>
+      <td>${a.position}</td>
+      <td>${statusBadge(a.status)}</td>
+      <td>${a.interview_received ? '<span class="text-success">Yes</span>' : '<span class="text-secondary">No</span>'}</td>
+      <td>${VISA_ICONS[a.visa_sponsorship] || '❓'}</td>
+      <td>${REMOTE_ICONS[a.remote_type] || '–'} <span class="text-secondary small">${a.remote_type || ''}</span></td>
+      <td class="text-secondary small">${a.applied_date || '–'}</td>
+      <td class="text-secondary small">${a.follow_up_date || '–'}</td>
+      <td><button class="btn btn-sm btn-outline-secondary py-0" onclick="event.stopPropagation();editApp(${a.id})"><i class="bi bi-pencil"></i></button></td>
+    </tr>
+  `).join('') || `<tr><td colspan="9" class="text-center text-secondary py-4">No applications yet. Add your first one!</td></tr>`;
+
+  // Mobile cards
+  document.getElementById('cards-container').innerHTML = apps.map(a => `
+    <div class="card mb-2 p-3" onclick="showDetail(${a.id})" style="cursor:pointer">
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <div>
+          <div class="fw-semibold">${a.company}</div>
+          <div class="text-secondary small">${a.position}</div>
+        </div>
+        ${statusBadge(a.status)}
+      </div>
+      <div class="d-flex gap-2 flex-wrap mt-1">
+        <span class="small text-secondary"><i class="bi bi-calendar3 me-1"></i>${a.applied_date || 'Not applied'}</span>
+        <span class="small text-secondary"><i class="bi bi-geo-alt me-1"></i>${a.location || 'Unknown'}</span>
+        ${a.interview_received ? '<span class="small text-success"><i class="bi bi-telephone-check me-1"></i>Interview</span>' : ''}
+        <span class="small">Visa: ${VISA_ICONS[a.visa_sponsorship] || '❓'}</span>
+      </div>
+    </div>
+  `).join('') || `<div class="text-center text-secondary py-4">No applications yet.</div>`;
+}
+
+function openAddModal(prefill = null) {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Add Job Application';
+  document.getElementById('url-section').style.display = '';
+  clearForm();
+  if (prefill) fillForm(prefill);
+  addModalInst.show();
+}
+
+function editApp(id) {
+  const a = allApps.find(x => x.id === id);
+  if (!a) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Edit Application';
+  document.getElementById('url-section').style.display = 'none';
+  fillForm(a);
+  detailModalInst.hide();
+  addModalInst.show();
+}
+
+function clearForm() {
+  ['url','company','position','location','salary','skills','desc','notes','applied','followup'].forEach(id => {
+    const el = document.getElementById('f-' + id);
+    if (el) el.value = '';
+  });
+  document.getElementById('f-visa').value = 'unknown';
+  document.getElementById('f-remote').value = 'unknown';
+  document.getElementById('f-status').value = 'interested';
+  document.getElementById('f-interview').checked = false;
+}
+
+function fillForm(a) {
+  const set = (id, val) => { const el = document.getElementById('f-'+id); if (el) el.value = val || ''; };
+  set('url', a.url); set('company', a.company); set('position', a.position);
+  set('location', a.location); set('salary', a.salary_range);
+  set('skills', a.required_skills); set('desc', a.job_description);
+  set('notes', a.notes); set('applied', a.applied_date); set('followup', a.follow_up_date);
+  document.getElementById('f-visa').value = a.visa_sponsorship || 'unknown';
+  document.getElementById('f-remote').value = a.remote_type || 'unknown';
+  document.getElementById('f-status').value = a.status || 'interested';
+  document.getElementById('f-interview').checked = !!a.interview_received;
+}
+
+function getFormData() {
+  return {
+    url: document.getElementById('f-url')?.value || null,
+    company: document.getElementById('f-company').value,
+    position: document.getElementById('f-position').value,
+    location: document.getElementById('f-location').value || null,
+    salary_range: document.getElementById('f-salary').value || null,
+    required_skills: document.getElementById('f-skills').value || null,
+    job_description: document.getElementById('f-desc').value || null,
+    notes: document.getElementById('f-notes').value || null,
+    applied_date: document.getElementById('f-applied').value || null,
+    follow_up_date: document.getElementById('f-followup').value || null,
+    visa_sponsorship: document.getElementById('f-visa').value,
+    remote_type: document.getElementById('f-remote').value,
+    status: document.getElementById('f-status').value,
+    interview_received: document.getElementById('f-interview').checked,
+  };
+}
+
+async function doScrape() {
+  const url = document.getElementById('f-url').value.trim();
+  if (!url) { toast('Enter a URL first', 'warning'); return; }
+  document.getElementById('scraping-overlay').classList.add('active');
+  try {
+    const res = await fetch('/api/scrape', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    fillForm(data);
+    toast('Job data extracted!', 'success');
+  } catch (e) {
+    toast('Scrape failed: ' + e.message, 'danger');
+  } finally {
+    document.getElementById('scraping-overlay').classList.remove('active');
+  }
+}
+
+async function saveApplication() {
+  const data = getFormData();
+  if (!data.company || !data.position) { toast('Company and Position are required', 'warning'); return; }
+  const method = editingId ? 'PUT' : 'POST';
+  const url = editingId ? `/api/applications/${editingId}` : '/api/applications';
+  const res = await fetch(url, {
+    method,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) { toast('Save failed', 'danger'); return; }
+  addModalInst.hide();
+  toast(editingId ? 'Updated!' : 'Application added!', 'success');
+  loadApps();
+}
+
+async function showDetail(id) {
+  const a = allApps.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('detail-title').textContent = `${a.company} — ${a.position}`;
+  document.getElementById('detail-body').innerHTML = `
+    <div class="row g-3">
+      <div class="col-12">${statusBadge(a.status)} ${a.interview_received ? '<span class="badge bg-success ms-1">Interview received</span>' : ''}</div>
+      ${a.url ? `<div class="col-12"><a href="${a.url}" target="_blank" class="small text-primary"><i class="bi bi-link-45deg me-1"></i>Job posting</a></div>` : ''}
+      <div class="col-sm-6"><div class="text-secondary small">Location</div><div>${a.location || '–'} ${REMOTE_ICONS[a.remote_type] || ''} ${a.remote_type || ''}</div></div>
+      <div class="col-sm-6"><div class="text-secondary small">Visa sponsorship</div><div>${VISA_ICONS[a.visa_sponsorship] || '❓'} ${a.visa_sponsorship}</div></div>
+      <div class="col-sm-6"><div class="text-secondary small">Salary</div><div>${a.salary_range || '–'}</div></div>
+      <div class="col-sm-6"><div class="text-secondary small">Applied date</div><div>${a.applied_date || '–'}</div></div>
+      <div class="col-sm-6"><div class="text-secondary small">Follow-up date</div><div>${a.follow_up_date || '–'}</div></div>
+      ${a.required_skills ? `<div class="col-12"><div class="text-secondary small mb-1">Required skills</div><div>${skillChips(a.required_skills)}</div></div>` : ''}
+      ${a.job_description ? `<div class="col-12"><div class="text-secondary small mb-1">Description</div><p class="small mb-0">${a.job_description}</p></div>` : ''}
+      ${a.notes ? `<div class="col-12"><div class="text-secondary small mb-1">Notes</div><p class="small mb-0">${a.notes}</p></div>` : ''}
+    </div>
+  `;
+  document.getElementById('detail-edit-btn').onclick = () => editApp(id);
+  document.getElementById('detail-delete-btn').onclick = () => deleteApp(id);
+  detailModalInst.show();
+}
+
+async function deleteApp(id) {
+  if (!confirm('Delete this application?')) return;
+  await fetch(`/api/applications/${id}`, {method: 'DELETE'});
+  detailModalInst.hide();
+  toast('Deleted', 'secondary');
+  loadApps();
+}
+
+function toast(msg, type = 'primary') {
+  const id = 'toast-' + Date.now();
+  const el = document.createElement('div');
+  el.className = `toast align-items-center text-bg-${type} border-0 show`;
+  el.id = id;
+  el.setAttribute('role', 'alert');
+  el.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+</script>
+</body>
+</html>
