@@ -2,6 +2,9 @@ import os
 from datetime import date, datetime
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +13,7 @@ from sqlalchemy.orm import Session
 
 import models
 import scraper
+import sponsor
 from database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
@@ -79,6 +83,8 @@ async def scrape_url(request: Request):
         raise HTTPException(400, "url is required")
     try:
         data = scraper.scrape_job_url(url)
+        if sponsor.is_sponsor(data.get("company", "")):
+            data["visa_sponsorship"] = "yes"
         return JSONResponse(data)
     except Exception as e:
         raise HTTPException(422, f"Could not scrape URL: {e}")
@@ -101,7 +107,10 @@ def list_applications(
 
 @app.post("/api/applications", status_code=201)
 def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)):
-    app_obj = models.Application(**payload.model_dump())
+    data = payload.model_dump()
+    if data.get("visa_sponsorship") != "yes" and sponsor.is_sponsor(data.get("company", "")):
+        data["visa_sponsorship"] = "yes"
+    app_obj = models.Application(**data)
     db.add(app_obj)
     db.commit()
     db.refresh(app_obj)
