@@ -33,7 +33,7 @@ Job posting text:
 
 
 def fetch_page_text(url: str) -> str:
-    with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client_http:
+    with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=25) as client_http:
         resp = client_http.get(url)
         resp.raise_for_status()
 
