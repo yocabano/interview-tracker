@@ -42,7 +42,7 @@ def fetch_page_text(url: str) -> str:
 
     try:
         with httpx.Client(
-            headers=HEADERS,,
+            headers=HEADERS,
             follow_redirects=True,
             timeout=timeout,
             http2=False,
