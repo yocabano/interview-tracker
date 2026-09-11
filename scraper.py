@@ -33,15 +33,53 @@ Job posting text:
 
 
 def fetch_page_text(url: str) -> str:
-    with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=25) as client_http:
-        resp = client_http.get(url)
-        resp.raise_for_status()
+    timeout = httpx.Timeout(
+        connect=10.0,
+        read=30.0,
+        write=10.0,
+        pool=10.0,
+    )
+
+    try:
+        with httpx.Client(
+            headers=HEADERS,,
+            follow_redirects=True,
+            timeout=timeout,
+            http2=False,
+        ) as client_http:
+            resp = client_http.get(url)
+            resp.raise_for_status()
+
+            print("Status:", resp.status_code)
+            print("Final URL:", resp.url)
+            print("Content length:", len(resp.content))
+
+    except httpx.ConnectTimeout as e:
+        raise RuntimeError(
+            f"Connection timed out: {url}"
+        ) from e
+
+    except httpx.ReadTimeout as e:
+        raise RuntimeError(
+            f"Website connected, but response timed out while reading: {url}"
+        ) from e
+
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(
+            f"Website returned HTTP {e.response.status_code}: {url}"
+        ) from e
+
+    except httpx.RequestError as e:
+        raise RuntimeError(
+            f"HTTP request failed: {e}"
+        ) from e
 
     soup = BeautifulSoup(resp.text, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
 
     text = soup.get_text(separator=" ", strip=True)
+
     # Keep only first 8000 chars to stay within token limits
     return " ".join(text.split())[:8000]
 
@@ -63,6 +101,10 @@ def extract_job_data(text: str) -> dict:
 
 def scrape_job_url(url: str) -> dict:
     text = fetch_page_text(url)
+    if not text:
+        raise ScrapeError(
+            "No job posting text could be extracted"
+        )
     data = extract_job_data(text)
     data["url"] = url
     return data
