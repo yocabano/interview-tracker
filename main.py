@@ -10,15 +10,36 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
 import models
 import scraper
 import sponsor
 from database import engine, get_db
+import secrets
+from fastapi import status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Interview Tracker")
+security = HTTPBasic()
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(security)):
+    expected_user = os.environ.get("APP_USERNAME")
+    expected_pass = os.environ.get("APP_PASSWORD")
+
+    # reject if not expected user 
+    if not expected_user or not expected_pass:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Auth not configured")
+
+    user_ok = secrets.compare_digest(credentials.username.encode(), expected_user.encode())
+    pass_ok = secrets.compare_digest(credentials.password.encode(), expected_pass.encode())
+    if not (user_ok and pass_ok):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+app = FastAPI(title="Interview Tracker", dependencies=[Depends(require_auth)])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
