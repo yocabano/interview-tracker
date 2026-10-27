@@ -40,6 +40,7 @@
     /* Desktop table tweaks */
     .cell-sm { font-size: calc(1rem - 1px); }   /* Company / Position: 1px smaller */
     .date-cell { color: #c9d1d9; }              /* Applied / Follow-up */
+    .apps-table { table-layout: fixed; width: 100%; min-width: 1016px; }  /* Position fills the rest */
   </style>
 </head>
 <body>
@@ -80,7 +81,19 @@
   <!-- Table (desktop) -->
   <div class="d-none d-md-block">
     <div class="table-responsive rounded border border-secondary">
-      <table class="table table-dark table-hover table-sm mb-0 align-middle">
+      <table class="table table-dark table-hover table-sm mb-0 align-middle apps-table">
+        <colgroup>
+          <col style="width:44px">   <!-- ID -->
+          <col style="width:150px">  <!-- Company -->
+          <col>                      <!-- Position (fills remaining space) -->
+          <col style="width:110px">  <!-- Status -->
+          <col style="width:76px">   <!-- Interview -->
+          <col style="width:56px">   <!-- Visa -->
+          <col style="width:82px">   <!-- Remote -->
+          <col style="width:100px">  <!-- Applied -->
+          <col style="width:100px">  <!-- Follow-up -->
+          <col style="width:48px">   <!-- Edit -->
+        </colgroup>
         <thead class="text-secondary" style="font-size:.8rem">
           <tr>
             <th>ID</th><th>Company</th><th>Position</th><th>Status</th>
@@ -316,11 +329,12 @@ function skillChips(skills) {
 function renderTable() {
   const apps = filteredApps();
   // Desktop table
-  document.getElementById('table-body').innerHTML = apps.map(a => `
+  const attr = s => String(s || '').replace(/"/g, '&quot;');
+  document.getElementById('table-body').innerHTML = apps.map((a, i) => `
     <tr style="cursor:pointer" onclick="showDetail(${a.id})">
-      <td class="text-secondary small">${a.id}</td>
-      <td class="fw-semibold cell-sm">${a.company}</td>
-      <td class="cell-sm">${a.position}</td>
+      <td class="text-secondary small">${i + 1}</td>
+      <td class="fw-semibold cell-sm text-truncate" title="${attr(a.company)}">${a.company}</td>
+      <td class="cell-sm text-truncate" title="${attr(a.position)}">${a.position}</td>
       <td>${statusBadge(a.status)}</td>
       <td>${a.interview_received ? '<span class="text-success fw-bold">Yes</span>' : '<span class="text-secondary">No</span>'}</td>
       <td>${VISA_ICONS[a.visa_sponsorship] || '❓'}</td>
