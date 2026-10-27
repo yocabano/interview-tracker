@@ -36,6 +36,10 @@
     }
     .scraping-overlay.active { display: flex; }
     #add-modal .modal-body { position: relative; }
+
+    /* Desktop table tweaks */
+    .cell-sm { font-size: calc(1rem - 1px); }   /* Company / Position: 1px smaller */
+    .date-cell { color: #c9d1d9; }              /* Applied / Follow-up */
   </style>
 </head>
 <body>
@@ -79,7 +83,7 @@
       <table class="table table-dark table-hover table-sm mb-0 align-middle">
         <thead class="text-secondary" style="font-size:.8rem">
           <tr>
-            <th>Company</th><th>Position</th><th>Status</th>
+            <th>ID</th><th>Company</th><th>Position</th><th>Status</th>
             <th>Interview</th><th>Visa</th><th>Remote</th>
             <th>Applied</th><th>Follow-up</th><th></th>
           </tr>
@@ -241,7 +245,7 @@ const STATUS_LABELS = {
   rejected: 'Rejected', withdrawn: 'Withdrawn'
 };
 const VISA_ICONS = { yes: '✅', no: '❌', unknown: '❓' };
-const REMOTE_ICONS = { remote: '🌐', hybrid: '🏠', onsite: '🏢', unknown: '–' };
+const REMOTE_ICONS = { remote: '🌐', hybrid: '🏠', onsite: '🏢', unknown: '❓' };
 
 let allApps = [];
 let editingId = null;
@@ -314,17 +318,18 @@ function renderTable() {
   // Desktop table
   document.getElementById('table-body').innerHTML = apps.map(a => `
     <tr style="cursor:pointer" onclick="showDetail(${a.id})">
-      <td class="fw-semibold">${a.company}</td>
-      <td>${a.position}</td>
+      <td class="text-secondary small">${a.id}</td>
+      <td class="fw-semibold cell-sm">${a.company}</td>
+      <td class="cell-sm">${a.position}</td>
       <td>${statusBadge(a.status)}</td>
-      <td>${a.interview_received ? '<span class="text-success">Yes</span>' : '<span class="text-secondary">No</span>'}</td>
+      <td>${a.interview_received ? '<span class="text-success fw-bold">Yes</span>' : '<span class="text-secondary">No</span>'}</td>
       <td>${VISA_ICONS[a.visa_sponsorship] || '❓'}</td>
       <td>${REMOTE_ICONS[a.remote_type] || '–'} <span class="text-secondary small">${a.remote_type || ''}</span></td>
-      <td class="text-secondary small">${a.applied_date || '–'}</td>
-      <td class="text-secondary small">${a.follow_up_date || '–'}</td>
+      <td class="date-cell small">${a.applied_date || '–'}</td>
+      <td class="date-cell small fw-bold">${a.follow_up_date || '–'}</td>
       <td><button class="btn btn-sm btn-outline-secondary py-0" onclick="event.stopPropagation();editApp(${a.id})"><i class="bi bi-pencil"></i></button></td>
     </tr>
-  `).join('') || `<tr><td colspan="9" class="text-center text-secondary py-4">No applications yet. Add your first one!</td></tr>`;
+  `).join('') || `<tr><td colspan="10" class="text-center text-secondary py-4">No applications yet. Add your first one!</td></tr>`;
 
   // Mobile cards
   document.getElementById('cards-container').innerHTML = apps.map(a => `
